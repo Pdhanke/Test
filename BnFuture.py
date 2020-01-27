@@ -26,7 +26,7 @@ def getDFforCloseTime(TradeTime) :
 
 def getDF() :
     engine = getconn()
-    query = "select * from bnfonemindata where tradedate between '2016-10-13' AND '2019-10-12'"
+    query = "select * from bnfonemindata where tradedate between '2016-10-13' AND '2029-10-12'"
 
     #query = "select * from onemindata where (Tradetime = '14:56:00') or (Tradetime = '15:15:00') or((Volume >25000) and (Tradetime between '09:35:00' and '14:55:00')) order by TradeDate"
     df = pd.read_sql_query(query, engine)
@@ -35,7 +35,7 @@ def getDF() :
 
 def getTradeDates() :
     engine = getconn()
-    query =  "SELECT distinct(TradeDate) from bnfonemindata where TradeDate between '2016-10-13' AND '2019-10-12'" 
+    query =  "SELECT distinct(TradeDate) from bnfonemindata where TradeDate between '2016-10-13' AND '2029-10-12'" 
     df = pd.read_sql_query(query, engine)
     return df
 
@@ -43,6 +43,56 @@ def getconn():
     conn = sqlalchemy.create_engine('mysql+pymysql://root:admin2@localhost:3306/analysisschema') 
     return conn
 
+def openMove() :
+    dfvolfull = getlabelDeltas()
+    dftradedate = getTradeDates()
+    
+    dfhigh = pd.DataFrame(columns= ['TradeDate','high16', 'highLater', 'delta'])
+    dflow = pd.DataFrame(columns= ['TradeDate','low16', 'lowLater', 'delta'])
+    
+    hindex = 0
+    lindex = 0
+    tindex = 0
+    for index, row in dftradedate.iterrows():
+        tindex = tindex + 1
+        dfday = dfvolfull[dfvolfull['TradeDate'] == row['TradeDate']]
+        h16 = dfday.iloc[0]['High']
+        h17 = dfday.iloc[1]['High']
+        op16 = dfday.iloc[1]['Open']
+        l16 = dfday.iloc[0]['Low']
+        l17 = dfday.iloc[1]['Low']
+        
+        
+        if(h17>h16) :
+            hindex = hindex + 1
+            print("17 higher: " , hindex)
+            for x in range(2, 45):
+                if (dfday.iloc[x]['Low'] < op16):
+                    #print(x," , ", dfday.iloc[x]['Low']," , ", dfday.iloc[x]['delta'])
+                    dflow.loc[len(dflow)] = [row['TradeDate'],l16,dfday.iloc[x]['Low'], dfday.iloc[x-1]['delta']]
+                    break
+                
+        
+        if(l17<l16) :
+            lindex = lindex + 1
+            print("17 lower: " , lindex)
+            for x in range(2, 45):
+                if (dfday.iloc[x]['High'] > op16):
+                    #print(x," , ", dfday.iloc[x]['High']," , ", dfday.iloc[x]['delta'])
+                    dfhigh.loc[len(dfhigh)] = [row['TradeDate'],h16,dfday.iloc[x]['High'], dfday.iloc[x-1]['delta']]
+                    break
+        
+        
+        
+    
+    t = time.localtime()
+    current_time = time.strftime("%H%M%S", t)
+    
+    print("total sample ", tindex)
+    
+    dflow.to_csv(current_time + 'openLowBroken.csv', encoding='utf-8', index=True)
+    dfhigh.to_csv(current_time + 'openHighBroken.csv', encoding='utf-8', index=True)
+    
 
 def polulateAverage() :
     dfvolfull = getlabelDeltas()
@@ -57,7 +107,7 @@ def polulateAverage() :
         dfday['Sno'] = np.arange(len(dfday)) + 1
         
         dfday['Average'] = dfday['Close'].cumsum(axis = 0)/dfday['Sno']
-
+        dfday['Average'] = dfday['Average']//10
         
         dfcsv = pd.concat([dfcsv, dfday], join="inner")
     
@@ -126,8 +176,8 @@ def getlabelDeltas() :
     
     dfvolfull['TradeDate'] = pd.to_datetime(dfvolfull['TradeDate'], format='%Y-%m-%d')
  
-    exDate = datetime.datetime.strptime('2017-01-01' , '%Y-%m-%d').date()
-    dfvolfull = dfvolfull[dfvolfull['TradeDate'] > exDate]
+    #exDate = datetime.datetime.strptime('2017-01-01' , '%Y-%m-%d').date()
+    #dfvolfull = dfvolfull[dfvolfull['TradeDate'] > exDate]
     print(len(dfvolfull))
     
     #dfvolfull["TradeDateTime"] = dfvolfull["TradeDate"] + dfvolfull["TradeTime"]
@@ -171,10 +221,10 @@ def getDfForMod(mod, dfvolfull) :
     del dfvol['Close']
     del dfvol['Close2']
     del dfvol['Open']
+    del dfvol['mod'] 
     """
-    del dfvol['OI']
-    del dfvol['mod']
-    del dfvol['book'] 
+
+    
    
     #dfvol.to_csv(current_time + 'buyfuturedip.csv', encoding='utf-8', index=False)
     return dfvol
@@ -223,10 +273,14 @@ def addAveragetoDelta() :
     t = time.localtime()
     current_time = time.strftime("%H%M%S", t)
     
+    df3= df3[df3['TradeTime'] > '09:20:00']
+    
     del df3['Close']
     del df3['Low']
     del df3['High']
     del df3['Open']
+    
+    df3['unitary'] = 1
  
     df3.to_csv(current_time + 'deltaavg.csv', encoding='utf-8', index=True)
     return df3
@@ -256,7 +310,7 @@ if __name__=="__main__":
     t = time.localtime()
     current_time = time.strftime("%H:%M:%S", t)
     
-    addAveragetoDelta()
+    openMove()
     t = time.localtime()
     current_time1 = time.strftime("%H:%M:%S", t)
     print(current_time)
